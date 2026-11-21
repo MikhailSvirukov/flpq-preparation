@@ -139,10 +139,23 @@ def convert(
 
 
 def _destination(raw: str, label: str) -> pathlib.Path:
-    """Interpret ``--output`` as a file, or as a directory for ``<label>.mtx``."""
-    as_directory = raw.endswith(("/", os.sep)) or pathlib.Path(raw).is_dir()
+    """Interpret ``--output`` as a file (``.mtx``) or a directory.
+
+    Anything without an ``.mtx`` suffix is a directory: ``-o graph`` writes
+    ``graph/<label>.mtx``. Pass ``-o graph/<label>.mtx`` to write one file.
+    """
     path = pathlib.Path(raw)
-    return path / f"{label}.mtx" if as_directory else path
+    as_directory = (
+        path.suffix != ".mtx" or raw.endswith(("/", os.sep)) or path.is_dir()
+    )
+    if as_directory:
+        if path.exists() and not path.is_dir():
+            raise ValueError(
+                f"{path} exists and is a file, not a directory; remove it or "
+                "pass an explicit .mtx path"
+            )
+        return path / f"{label}.mtx"
+    return path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -154,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         "-o",
         "--output",
         default="soc-pokec.mtx",
-        help="output .mtx file or a directory (default: soc-pokec.mtx)",
+        help="output .mtx file, or a directory (default: soc-pokec.mtx)",
     )
     parser.add_argument(
         "--label",

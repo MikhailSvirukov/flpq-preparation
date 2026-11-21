@@ -331,13 +331,13 @@ def compute(
         raise
     body_path.unlink(missing_ok=True)
 
-    print(f"query:       {path}")
-    print(f"nodes:       {num_nodes}")
-    print(f"states:      {num_states}")
-    print(f"edges used:  {edge_count}")
-    print(f"rows:        {num_nodes}")
-    print(f"results:     {total}")
-    print(f"output:      {output}")
+    print(f"query:        {path}")
+    print(f"nodes:        {num_nodes}")
+    print(f"states:       {num_states}")
+    print(f"edge count:   {edge_count}")
+    print(f"rows:         {num_nodes}")
+    print(f"result pairs: {total}")
+    print(f"output:       {output}")
     return num_nodes, num_states, total
 
 

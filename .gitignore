@@ -1,0 +1,6 @@
+build/
+*.tar.gz
+*.7z
+*.ttl
+*.ttl.gz
+pokec/data/soc_pokec/raw/

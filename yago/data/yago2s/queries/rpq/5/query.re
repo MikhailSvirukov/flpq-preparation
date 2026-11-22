@@ -1,0 +1,1 @@
+hasSuccessor livesIn isLocatedIn isLocatedIn* dealsWith dealsWith*

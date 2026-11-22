@@ -14,15 +14,20 @@ A directory (by default ``graph/``) with one Boolean MatrixMarket file per
 predicate::
 
     graph/
-    ├── type.mtx
-    ├── subClassOf.mtx
-    ├── label.mtx
+    ├── linksTo.mtx
+    ├── livesIn.mtx
+    ├── isLocatedIn.mtx
     └── ...
 
 The transformation is:
 
-* every RDF term (subject/object, including literals) becomes a graph node;
-* every predicate becomes an edge label;
+* **RDF/RDFS/OWL/SKOS predicates are dropped by default** (``rdf:type``,
+  ``rdfs:subClassOf``, ``rdfs:label``, ``owl:sameAs``, ``skos:prefLabel``,
+  ...): the result is a graph of real relations, not an RDF/OWL graph. Use
+  ``--keep-schema`` to keep them;
+* every remaining RDF term (subject/object, including literals) becomes a
+  graph node;
+* every remaining predicate becomes an edge label;
 * **prefixes are removed from labels**: the predicate IRI is expanded and
   only its local name is kept (``rdfs:subClassOf`` -> ``subClassOf``,
   ``owl:sameAs`` -> ``sameAs``, ``<linksTo>`` -> ``linksTo``);
@@ -73,6 +78,15 @@ _PREFIX_RE = re.compile(
 _BASE_RE = re.compile(r"^(?:@base|BASE)\s*<([^>]*)>\s*\.?\s*$")
 _ABSOLUTE_IRI_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
+#: Predicate namespaces dropped by default: the graph keeps only real
+#: relations, not RDF/OWL/SKOS schema and metadata edges.
+SCHEMA_NAMESPACES = (
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "http://www.w3.org/2000/01/rdf-schema#",
+    "http://www.w3.org/2002/07/owl#",
+    "http://www.w3.org/2004/02/skos/core#",
+)
+
 Triple = tuple[str, str, str]  # (label, subject, object)
 
 
@@ -119,9 +133,8 @@ def _local_name(iri: str) -> str:
     return urllib.parse.unquote(name)
 
 
-def _label_for(predicate: str, base: str, prefixes: dict[str, str]) -> str:
-    """Expand a predicate and keep only its local name (drop the prefix)."""
-    iri = _expand_term(predicate, base, prefixes)
+def _label_from_iri(iri: str, predicate: str) -> str:
+    """Keep only the local name of an expanded predicate IRI."""
     label = _local_name(iri)
     # Keep matrix file names portable; YAGO labels are normally clean already.
     label = re.sub(r"[^A-Za-z0-9_.-]", "_", label)
@@ -132,15 +145,32 @@ def _label_for(predicate: str, base: str, prefixes: dict[str, str]) -> str:
             f"predicate {predicate!r} maps to the reserved reversed label "
             f"{label!r}"
         )
-    if "bar" in label.replace("_", " ").split() or "rev" in label.replace("_", " ").split():
+    if (
+        "bar" in label.replace("_", " ").split()
+        or "rev" in label.replace("_", " ").split()
+    ):
         raise ValueError(
             f"predicate {predicate!r} maps to the forbidden label {label!r}"
         )
     return label
 
 
-def iter_triples(path: pathlib.Path) -> Iterator[Triple]:
-    """Yield ``(label, subject, object)`` with expanded IRIs."""
+def _is_schema_predicate(iri: str) -> bool:
+    return iri.startswith(SCHEMA_NAMESPACES)
+
+
+def iter_triples(
+    path: pathlib.Path,
+    *,
+    drop_schema: bool = True,
+    stats: dict[str, int] | None = None,
+) -> Iterator[Triple]:
+    """Yield ``(label, subject, object)`` with expanded IRIs.
+
+    With ``drop_schema=True`` (the default), triples whose predicate belongs
+    to the RDF/RDFS/OWL/SKOS namespaces are skipped: the graph keeps only
+    real relations. ``stats["dropped"]`` counts the skipped triples.
+    """
     base = "http://yago-knowledge.org/resource/"
     prefixes: dict[str, str] = {}
     labels: dict[str, str] = {}
@@ -153,7 +183,11 @@ def iter_triples(path: pathlib.Path) -> Iterator[Triple]:
             if line.lstrip().startswith("#"):
                 continue
             stripped = line.strip()
-            if stripped.startswith("@") or stripped.upper().startswith("PREFIX") or stripped.upper().startswith("BASE"):
+            if (
+                stripped.startswith("@")
+                or stripped.upper().startswith("PREFIX")
+                or stripped.upper().startswith("BASE")
+            ):
                 prefix_match = _PREFIX_RE.match(stripped)
                 if prefix_match:
                     prefixes[prefix_match.group(1)] = prefix_match.group(2)
@@ -169,18 +203,23 @@ def iter_triples(path: pathlib.Path) -> Iterator[Triple]:
                     f"{path}:{number}: expected four tab-separated fields "
                     f"(subject, predicate, object, '.'), got {len(parts)}"
                 )
-            subject = _expand_term(parts[0], base, prefixes)
             predicate = parts[1]
-            label = labels.get(predicate)
+            predicate_iri = _expand_term(predicate, base, prefixes)
+            if drop_schema and _is_schema_predicate(predicate_iri):
+                if stats is not None:
+                    stats["dropped"] = stats.get("dropped", 0) + 1
+                continue
+            subject = _expand_term(parts[0], base, prefixes)
+            label = labels.get(predicate_iri)
             if label is None:
-                label = _label_for(predicate, base, prefixes)
+                label = _label_from_iri(predicate_iri, predicate)
                 owner = label_owner.setdefault(label, predicate)
                 if owner != predicate:
                     raise ValueError(
                         f"{path}:{number}: predicates {owner!r} and "
                         f"{predicate!r} both map to label {label!r}"
                     )
-                labels[predicate] = label
+                labels[predicate_iri] = label
             obj = _expand_term(parts[2], base, prefixes)
             yield label, subject, obj
 
@@ -255,6 +294,7 @@ def convert(
     chunk_size: int = 1_000_000,
     temp_dir: pathlib.Path | None = None,
     expected_terms: int = 50_000_000,
+    drop_schema: bool = True,
 ) -> tuple[int, int, int]:
     """Convert ``source`` to ``output``; return ``(nodes, labels, edges)``."""
     if chunk_size <= 0:
@@ -269,9 +309,10 @@ def convert(
     chunks: list[pathlib.Path] = []
     buffer: list[Triple] = []
     num_input = 0
+    stats: dict[str, int] = {}
     with tempfile.TemporaryDirectory(prefix=".yago-", dir=staging) as temporary:
         chunk_dir = pathlib.Path(temporary)
-        for triple in iter_triples(source):
+        for triple in iter_triples(source, drop_schema=drop_schema, stats=stats):
             buffer.append(triple)
             num_input += 1
             if len(buffer) >= chunk_size:
@@ -336,6 +377,7 @@ def convert(
     print(f"source:        {source}")
     print(f"output:        {output}")
     print(f"triples read:  {num_input}")
+    print(f"schema dropped:{stats.get('dropped', 0)}")
     print(f"unique edges:  {sum(counts.values())}")
     print(f"duplicates:    {num_input - num_unique}")
     print(f"nodes:         {num_nodes}")
@@ -374,6 +416,12 @@ def main(argv: list[str] | None = None) -> int:
         help="expected number of unique RDF terms (default: 50000000); "
         "increase it if the converter reports that the term table is full",
     )
+    parser.add_argument(
+        "--keep-schema",
+        action="store_true",
+        help="keep RDF/RDFS/OWL/SKOS predicates; by default only real "
+        "relations are converted",
+    )
     args = parser.parse_args(argv)
 
     if not args.source.is_file():
@@ -385,6 +433,7 @@ def main(argv: list[str] | None = None) -> int:
             chunk_size=args.chunk_size,
             temp_dir=args.temp_dir,
             expected_terms=args.expected_terms,
+            drop_schema=not args.keep_schema,
         )
     except (ValueError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)

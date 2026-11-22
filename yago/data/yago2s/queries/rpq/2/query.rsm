@@ -1,0 +1,10 @@
+start: S
+[box S]
+start: 0
+final: 4
+0 --hasChild--> 1
+1 --livesIn--> 2
+2 --isLocatedIn--> 3
+3 --isLocatedIn--> 3
+3 --dealsWith--> 4
+4 --dealsWith--> 4

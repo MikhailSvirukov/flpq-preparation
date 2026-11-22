@@ -1,0 +1,1 @@
+isMarriedTo livesIn isLocatedIn isLocatedIn* dealsWith dealsWith*

@@ -1,1 +1,0 @@
-hasPredecessor livesIn isLocatedIn isLocatedIn* dealsWith dealsWith*

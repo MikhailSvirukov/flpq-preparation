@@ -1,9 +1,0 @@
-start: S
-[box S]
-start: 0
-final: 1, 2, 3, 4, 5
-0 --friend--> 1
-1 --friend--> 2
-2 --friend--> 3
-3 --friend--> 4
-4 --friend--> 5

@@ -1,1 +1,0 @@
-hasChild livesIn isLocatedIn isLocatedIn* dealsWith dealsWith*

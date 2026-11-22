@@ -1,1 +1,0 @@
-influences livesIn isLocatedIn isLocatedIn* dealsWith dealsWith*

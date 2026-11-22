@@ -1,1 +1,0 @@
-livesIn isLocatedIn isLocatedIn* dealsWith dealsWith*

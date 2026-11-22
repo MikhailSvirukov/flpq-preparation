@@ -1,1 +1,0 @@
-hasAcademicAdvisor livesIn isLocatedIn isLocatedIn* dealsWith dealsWith*

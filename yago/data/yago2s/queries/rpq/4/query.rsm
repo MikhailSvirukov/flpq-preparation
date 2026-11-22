@@ -1,9 +1,0 @@
-start: S
-[box S]
-start: 0
-final: 3
-0 --livesIn--> 1
-1 --isLocatedIn--> 2
-2 --isLocatedIn--> 2
-2 --dealsWith--> 3
-3 --dealsWith--> 3

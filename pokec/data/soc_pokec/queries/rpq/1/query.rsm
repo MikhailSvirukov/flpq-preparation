@@ -1,5 +1,0 @@
-start: S
-[box S]
-start: 0
-final: 0
-0 --friend--> 0
